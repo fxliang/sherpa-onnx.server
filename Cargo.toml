@@ -1,0 +1,39 @@
+[package]
+name = "sherpa-onnx-server"
+version = "0.2.0"
+edition = "2021"
+description = "Cross-platform TUI server for sherpa-onnx ASR models"
+license = "MIT"
+
+[dependencies]
+cursive = { version = "0.21", default-features = false, features = ["crossterm-backend"] }
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["stream", "json"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "local-time"] }
+clap = { version = "4", features = ["derive"] }
+flate2 = "1"
+tar = "0.4"
+zip = "2"
+bzip2 = "0.5"
+xz2 = "0.1"
+regex = "1"
+dirs = "6"
+chrono = "0.4"
+anyhow = "1"
+mdns-sd = "0.11"
+hostname = "0.4"
+libc = "0.2"
+socket2 = "0.5"
+
+# Windows: use shared (DLL) linking to avoid MSVC C++ STL ABI mismatch
+# Linux/macOS: use static linking
+[target.'cfg(target_os = "windows")'.dependencies]
+sherpa-onnx = { version = "2.0.1", default-features = false, features = ["shared"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+sherpa-onnx = { version = "2.0.1", default-features = false, features = ["static"] }

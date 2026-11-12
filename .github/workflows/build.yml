@@ -1,0 +1,134 @@
+name: Native Builds
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  llama-server:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # Pinned from sjl623/llama.cpp's STQ_0 branch for HY-MT2 STQ support.
+      LLAMA_REVISION: 1e411d8f5a1e23525fa3265dfb4bd76265465397
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore llama-server
+        id: llama-cache
+        uses: actions/cache@v4
+        with:
+          path: llama-server.tar
+          key: llama-server-${{ matrix.os }}-${{ runner.arch }}-${{ env.LLAMA_REVISION }}-${{ hashFiles('.github/workflows/build.yml') }}
+      - name: Checkout llama.cpp
+        if: steps.llama-cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: sjl623/llama.cpp
+          ref: ${{ env.LLAMA_REVISION }}
+          path: llama.cpp
+      - name: Build Static llama-server
+        if: steps.llama-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          cmake -S llama.cpp -B llama-build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_BACKEND_DL=OFF \
+            -DGGML_NATIVE=OFF \
+            -DGGML_OPENMP=OFF \
+            -DGGML_METAL=OFF \
+            -DGGML_ACCELERATE=OFF \
+            -DGGML_BLAS=OFF \
+            -DGGML_CUDA=OFF \
+            -DGGML_VULKAN=OFF \
+            -DLLAMA_BUILD_COMMON=ON \
+            -DLLAMA_BUILD_TOOLS=ON \
+            -DLLAMA_BUILD_SERVER=ON \
+            -DLLAMA_BUILD_APP=OFF \
+            -DLLAMA_BUILD_TESTS=OFF \
+            -DLLAMA_BUILD_EXAMPLES=OFF \
+            -DLLAMA_BUILD_UI=OFF \
+            -DLLAMA_USE_PREBUILT_UI=OFF \
+            -DLLAMA_OPENSSL=OFF
+          cmake --build llama-build --config Release --target llama-server --parallel 3
+          mkdir -p llama-runtime
+          if [ "$RUNNER_OS" = Windows ]; then
+            cp llama-build/bin/Release/llama-server.exe llama-runtime/
+          else
+            cp llama-build/bin/llama-server llama-runtime/
+          fi
+          cp llama.cpp/LICENSE llama-runtime/LLAMA_LICENSE
+          printf '%s\n' "$LLAMA_REVISION" > llama-runtime/LLAMA_REVISION
+          tar -cf llama-server.tar -C llama-runtime .
+      - name: Verify llama-server
+        shell: bash
+        run: |
+          mkdir -p llama-runtime
+          tar -xf llama-server.tar -C llama-runtime
+          ./llama-runtime/llama-server --version
+      - name: Upload llama-server
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-server-${{ matrix.os }}-${{ runner.arch }}
+          path: llama-server.tar
+          if-no-files-found: error
+
+  test:
+    name: Test and Package (${{ matrix.os }})
+    needs: llama-server
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      LLAMA_BIN_DIR: ${{ github.workspace }}/llama-runtime
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download llama-server
+        uses: actions/download-artifact@v4
+        with:
+          name: llama-server-${{ matrix.os }}-${{ runner.arch }}
+          path: llama-artifact
+      - name: Prepare llama-server
+        shell: bash
+        run: |
+          mkdir -p "$LLAMA_BIN_DIR"
+          tar -xf llama-artifact/llama-server.tar -C "$LLAMA_BIN_DIR"
+          "$LLAMA_BIN_DIR/llama-server" --version
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Linux Build Dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libssl-dev liblzma-dev libbz2-dev
+      - name: Build and Test
+        run: cargo test --locked
+      - name: Check Shell Syntax
+        shell: bash
+        run: bash -n package.sh check.sh
+      - name: Build Release Package
+        shell: bash
+        env:
+          THIRD_PARTY_NOTICES_DIR: ${{ github.workspace }}/llama-notices
+        run: |
+          mkdir -p "$THIRD_PARTY_NOTICES_DIR"
+          cp "$LLAMA_BIN_DIR/LLAMA_LICENSE" "$LLAMA_BIN_DIR/LLAMA_REVISION" "$THIRD_PARTY_NOTICES_DIR/"
+          bash ./package.sh
+      - name: Upload Release Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: sherpa-onnx.server-${{ matrix.os }}-${{ runner.arch }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          compression-level: 0

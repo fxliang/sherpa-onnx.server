@@ -1,0 +1,9 @@
+target
+/tester/
+*.mp3
+*.wav
+/local-only/
+/dist/
+/models/
+/.env
+/.env.*
