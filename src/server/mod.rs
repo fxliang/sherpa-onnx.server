@@ -501,7 +501,13 @@ mod tests {
 
     #[tokio::test]
     async fn loopback_server_accepts_websockets_without_binding_udp_discovery() {
-        for host in ["127.0.0.1", "127.0.0.2", "[::1]"] {
+        for host in [
+            "127.0.0.1",
+            // macOS requires an explicit interface alias for this address.
+            #[cfg(not(target_os = "macos"))]
+            "127.0.0.2",
+            "[::1]",
+        ] {
             // TCP and UDP have independent port allocations.
             let listener = (0..100).find_map(|_| {
                 let listener = bind_listener(host, 0).unwrap();

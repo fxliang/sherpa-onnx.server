@@ -90,7 +90,8 @@ jobs:
         os: [ubuntu-24.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     env:
-      LLAMA_BIN_DIR: ${{ github.workspace }}/llama-runtime
+      # Relative paths work with both Cargo and Git Bash tools on Windows.
+      LLAMA_BIN_DIR: llama-runtime
     steps:
       - uses: actions/checkout@v4
       - name: Download llama-server
@@ -120,7 +121,7 @@ jobs:
       - name: Build Release Package
         shell: bash
         env:
-          THIRD_PARTY_NOTICES_DIR: ${{ github.workspace }}/llama-notices
+          THIRD_PARTY_NOTICES_DIR: llama-notices
         run: |
           mkdir -p "$THIRD_PARTY_NOTICES_DIR"
           cp "$LLAMA_BIN_DIR/LLAMA_LICENSE" "$LLAMA_BIN_DIR/LLAMA_REVISION" "$THIRD_PARTY_NOTICES_DIR/"
